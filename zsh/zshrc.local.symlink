@@ -35,3 +35,6 @@ do
 done
 
 unset config_files
+
+## handle ssh agent
+[[ -x $ZSH/bin/ssh-agent-handling.sh ]] && $ZSH/bin/ssh-agent-handling.sh
