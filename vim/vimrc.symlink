@@ -1,0 +1,141 @@
+set nocompatible               " be iMproved
+filetype off                   " required!
+
+"" Vundle!
+set rtp+=~/.vim/bundle/vundle/
+call vundle#rc()
+
+" let Vundle manage Vundle
+" required! 
+Bundle 'gmarik/vundle'
+
+"" original repos on github
+" GIT helper
+Bundle 'tpope/vim-fugitive'
+" Statusline
+"disabled Bundle 'Lokaltog/powerline', {'rtp': 'powerline/bindings/vim/'}
+Bundle 'bling/vim-airline'
+" Snipplets
+Bundle 'tomtom/tlib_vim'
+Bundle 'MarcWeber/vim-addon-mw-utils'
+Bundle 'garbas/vim-snipmate'
+Bundle 'honza/vim-snippets'
+" Puppet helper
+Bundle 'netdata/vim-puppet'
+" Syntax checking hacks for vim
+Bundle 'scrooloose/syntastic'
+" Vim script for text filtering and alignment
+Bundle 'godlygeek/tabular'
+" Vimwiki
+Bundle 'vimwiki/vimwiki'
+" Tab Completion
+"Bundle 'Shougo/neocomplcache.vim'
+" Open Files with Command-T
+"Bundle 'wincent/Command-T'
+
+syntax on
+""filetype plugin indent on
+filetype plugin on
+
+set modeline
+set ruler
+set showcmd
+
+"" Whitespace
+set nowrap " don't wrap lines
+set tabstop=2 " a tab is two spaces
+set shiftwidth=2 " an autoindent (with <<) is two spaces
+set expandtab " use spaces, not tabs
+set list " Show invisible characters
+set backspace=indent,eol,start " backspace through everything in insert mode
+
+" List chars
+set listchars="" " Reset the listchars
+set listchars=tab:\ \ " a tab should display as " ", trailing whitespace as "."
+set listchars+=trail:. " show trailing spaces as dots
+set listchars+=extends:> " The character to show in the last column when wrap is
+" off and the line continues beyond the right of the screen
+set listchars+=precedes:< " The character to show in the first column when wrap is
+" off and the line continues beyond the left of the screen
+"set listchars=nbsp:Â¬ " show non-breaking spaces
+
+"" Searching
+set hlsearch " highlight matches
+set incsearch " incremental searching
+set ignorecase " searches are case insensitive...
+set smartcase 
+
+" Set the status line the way i like it
+"set stl=%f\ %m\ %r%{fugitive#statusline()}\ Line:%l/%L[%p%%]\ Col:%v\ Buf:#%n\ [%b][0x%B]
+" tell VIM to always put a status line in, even if there is only one window
+" "https://wincent.com/wiki/Set_the_Vim_statusline
+set statusline=%<\ %f\%m%r\ %y\ %{fugitive#statusline()}\ %=%-35.(Line:\ %l\ of\ %L,\ Col:\ %c%V\ Buf:#%n\ (%P)%)
+set laststatus=2
+
+let mapleader = ","
+
+
+" paste mode toggle
+set pastetoggle=<f4>
+
+" toggle number
+nmap <F5> :set number! number?<CR>
+
+" set indenting for puppet files
+autocmd FileType puppet setlocal shiftwidth=4 tabstop=4
+
+"http://stackoverflow.com/questions/849084/what-fold-should-i-use-in-vim
+" Folding stuff
+"hi Folded guibg=red guifg=Red cterm=bold ctermbg=DarkGrey ctermfg=lightblue
+"hi FoldColumn guibg=grey78 gui=Bold guifg=DarkBlue
+set foldcolumn=0
+set foldclose=
+set foldmethod=indent
+set foldnestmax=10
+set foldlevel=999
+"set fillchars=vert:\|,fold:\
+"set foldminlines=1
+" Toggle fold state between closed and opened.
+
+" If there is no fold at current line, just moves forward.
+" If it is present, reverse it's state.
+fu! ToggleFold()
+  if foldlevel('.') == 0
+    normal! l
+  else
+    if foldclosed('.') < 0
+      . foldclose
+    else
+      . foldopen
+    endif
+  endif
+  echo
+endf
+" Map this function to Space key.
+noremap <space> :call ToggleFold()<CR>
+
+"Load a host specific file
+if filereadable(expand("$HOME/.vim/vimrc.local"))
+  source $HOME/.vim/vimrc.local
+endif
+
+""" Plugin Configuration
+
+" Powerline
+let g:Powerline_symbols = 'unicode'
+set encoding=utf-8
+
+" vimwiki
+let g:vimwiki_ext2syntax = {'.md': 'markdown', '.mkd': 'markdown', '.wiki': 'media'}
+
+let wiki_private = {}
+let wiki_private.path = '~/Documents/Privat/Wiki/'
+let wiki_private.path_html = '~/public_html/'
+let wiki_private.ext = '.md'
+let wiki_private.syntax = 'markdown'
+
+let g:vimwiki_list = [wiki_private]
+
+" neocomplcache
+let g:neocomplcache_enable_at_startup = 1
+
