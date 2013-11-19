@@ -9,7 +9,7 @@ call vundle#rc()
 " required! 
 Bundle 'gmarik/vundle'
 
-"" original repos on github
+""" Bundles / Plugins
 " GIT helper
 Bundle 'tpope/vim-fugitive'
 " Statusline
@@ -32,6 +32,11 @@ Bundle 'vimwiki/vimwiki'
 "Bundle 'Shougo/neocomplcache.vim'
 " Open Files with Command-T
 "Bundle 'wincent/Command-T'
+
+" Syntax plugins
+Bundle 'hail2u/vim-css3-syntax'
+Bundle 'othree/html5-syntax.vim'
+Bundle 'tpope/vim-markdown'
 
 syntax on
 ""filetype plugin indent on
@@ -114,9 +119,14 @@ endf
 " Map this function to Space key.
 noremap <space> :call ToggleFold()<CR>
 
-"Load a host specific file
+" Load a host specific file
 if filereadable(expand("$HOME/.vim/vimrc.local"))
   source $HOME/.vim/vimrc.local
+endif
+
+" Load .private_dotfiles vim config
+if filereadable(expand("$HOME/.vimrc.private"))
+  source $HOME/.vimrc.private
 endif
 
 """ Plugin Configuration
@@ -127,14 +137,6 @@ set encoding=utf-8
 
 " vimwiki
 let g:vimwiki_ext2syntax = {'.md': 'markdown', '.mkd': 'markdown', '.wiki': 'media'}
-
-let wiki_private = {}
-let wiki_private.path = '~/Documents/Privat/Wiki/'
-let wiki_private.path_html = '~/public_html/'
-let wiki_private.ext = '.md'
-let wiki_private.syntax = 'markdown'
-
-let g:vimwiki_list = [wiki_private]
 
 " neocomplcache
 let g:neocomplcache_enable_at_startup = 1
