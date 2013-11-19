@@ -38,3 +38,8 @@ unset config_files
 
 ## handle ssh agent
 [[ -x $ZSH/bin/ssh-agent-handling.sh ]] && $ZSH/bin/ssh-agent-handling.sh
+
+## path handling
+[[ -d "$HOME/bin" ]] && PATH="$HOME/bin:$PATH"
+[[ -d "$HOME/.dotfiles/bin" ]] && PATH="$HOME/.dotfiles/bin:$PATH"
+[[ -d "$HOME/.private_dotfiles/bin" ]] && PATH="$HOME/.private_dotfiles/bin:$PATH"
