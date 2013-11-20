@@ -56,3 +56,8 @@ fi
 
 ## syntax highlighter
 ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
+
+## history search plugin
+zmodload zsh/terminfo
+bindkey "$terminfo[kcuu1]" history-substring-search-up
+bindkey "$terminfo[kcud1]" history-substring-search-down
