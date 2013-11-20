@@ -42,19 +42,19 @@ unset config_files
 ## handle ssh agent
 [[ -x $ZSH/bin/ssh-agent-handling.sh ]] && $ZSH/bin/ssh-agent-handling.sh
 
-## path handling
+### path handling
 [[ -d "$HOME/bin" ]] && PATH="$HOME/bin:$PATH"
 [[ -d "$HOME/.dotfiles/bin" ]] && PATH="$HOME/.dotfiles/bin:$PATH"
 [[ -d "$HOME/.private_dotfiles/bin" ]] && PATH="$HOME/.private_dotfiles/bin:$PATH"
 
-## use 256 colors
+### use 256 colors
 if [[ "$TERM" == xterm ]]; then
   export TERM=xterm-256color
-elif if [[ $TERM == screen ]]; then
+elif [[ "$TERM" == screen ]]; then
   export TERM=screen-256color
 fi
 
-## syntax highlighter
+### syntax highlighter
 ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
 
 ## history search plugin
