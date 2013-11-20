@@ -8,6 +8,9 @@ then
   source ~/.zshrc.private
 fi
 
+# load syntx highlight plugin first
+source $ZSH/zsh/plugins/zsh-syntax-highlighting.zsh
+
 # all of our zsh files
 typeset -U config_files
 config_files=($ZSH/**/*.zsh)
@@ -50,3 +53,6 @@ if [[ "$TERM" == xterm ]]; then
 elif if [[ $TERM == screen ]]; then
   export TERM=screen-256color
 fi
+
+## syntax highlighter
+ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
