@@ -40,7 +40,7 @@ done
 unset config_files
 
 ## handle ssh agent
-[[ -x $ZSH/bin/ssh-agent-handling.sh ]] && $ZSH/bin/ssh-agent-handling.sh
+# it's done in .zprofile
 
 ### path handling
 [[ -d "$HOME/bin" ]] && PATH="$HOME/bin:$PATH"
