@@ -28,6 +28,7 @@ fail () {
 }
 
 setup_gitconfig () {
+  if ! [ -d $PRIVATEDOTFILES_ROOT ]; then mkdir -p $PRIVATEDOTFILES_ROOT/git; fi
   if ! [ -f $PRIVATEDOTFILES_ROOT/git/gitconfig.symlink ]
   then
     info 'setup gitconfig'
