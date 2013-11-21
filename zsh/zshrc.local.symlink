@@ -40,7 +40,7 @@ done
 unset config_files
 
 ## handle ssh agent
-# it's done in .zprofile
+eval $($HOME/.dotfiles/bin/keychain --eval -q)
 
 ### path handling
 [[ -d "$HOME/bin" ]] && PATH="$HOME/bin:$PATH"
