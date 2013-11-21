@@ -1,17 +1,21 @@
-# personal dotfiles - used by tobru
+# Personal dotfiles - used by tobru
 
-## installation notes
+## Installation Notes
 
 ```sh
 git clone https://github.com/tobru/dotfiles.git ~/.dotfiles
 cd ~/.dotfiles
-script/bootstrap
+git submodule update --init
+scripts/bootstrap
+scripts/install
 ```
 
 This will symlink the appropriate files in `.dotfiles` to your home directory.
 Everything is configured and tweaked within `~/.dotfiles`.
+The install script takes the necessary steps to configure the tools (f.e. run `vundle`
+in vim to install the plugins)
 
-## topical
+## Topical
 
 Everything's built around topic areas. If you're adding a new area to your
 forked dotfiles — say, "Java" — you can simply add a `java` directory and put
@@ -19,7 +23,7 @@ files in there. Anything with an extension of `.zsh` will get automatically
 included into your shell. Anything with an extension of `.symlink` will get
 symlinked without extension into `$HOME` when you run `script/bootstrap`.
 
-## components
+## Components
 
 There's a few special files in the hierarchy.
 
@@ -36,14 +40,15 @@ There's a few special files in the hierarchy.
   but still keep those autoloaded files in your home directory. These get
   symlinked in when you run `script/bootstrap`.
 
-## private dotfiles
+## Private Dotfiles
 
 Some configuration parameters should not be publicly available. If you'd like to have
 a repository for private config files, just create a directory `~/.private_dotfiles` with
 the same directory structure like this one. The `bootstrap` script knows how to handle it
-and the `ZSH` configuration is also able to handle it.
+and the `ZSH` and `VIM` configuration is also able to handle it.
 
-## credits
+## Credits
 
 This dotfiles repository including the scripts are based on the work of @holman [Zach Holman](https://github.com/holman)
 Thanks @holman for the inspiration for creating this repository of dotfiles.
+Many configuration ideas are based on the work of others found throughout the internet. Thanks to all of them.
