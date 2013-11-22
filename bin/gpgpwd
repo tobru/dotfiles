@@ -1,0 +1,1449 @@
+#!/usr/bin/perl
+# gpgpwd
+# Copyright (C) Eskild Hustvedt 2012
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+use strict;
+use warnings;
+use 5.010;
+use Getopt::Long;
+use JSON qw(encode_json decode_json);
+use Try::Tiny;
+use IPC::Open2 qw(open2);
+use File::Copy qw(move);
+use File::Basename qw(basename dirname);
+use Cwd qw(getcwd);
+use constant {
+    true => 1,
+    false => undef,
+
+    V_INFO => 1,
+    V_LOG => 2,
+};
+
+my $VERSION          = '0.3';
+my @gpg              = qw(gpg --gnupg --default-recipient-self --no-verbose --quiet --personal-compress-preferences zlib);
+my $storagePath      = $ENV{HOME}.'/.gpgpwddb';
+my $dataVersion      = 1;
+my $enableGit        = false;
+my $forceUnsafe      = false;
+my $requireAgent     = false;
+my $fastGitMode      = false;
+my $useXclip         = true;
+my $useGpgAgent      = true;
+my $verbosity        = 0;
+my @clipboardTargets = qw(clipboard);
+
+# Purpose: print() wrapper that obeys $verbosity
+# Usage: printv(LEVEL, ...);
+# LEVEL is one of the V_* constants, ... are the normal print() parameters
+sub printv
+{
+    my $level = shift;
+    if ($verbosity >= $level)
+    {
+        my @prefixes;
+        $prefixes[V_INFO] = 'info';
+        $prefixes[V_LOG]  = 'log';
+        printf('[gpgpwd %-4s] ',$prefixes[$level]);
+        print @_;
+    }
+}
+
+# Purpose: system() wrapper that outputs the command if $verbosity >= V_LOG
+# Usage: Same as system()
+sub psystem
+{
+    if ($verbosity >= V_LOG)
+    {
+        printv(V_LOG,'Running: '.join(' ',@_)."\n");
+    }
+    return system(@_);
+}
+
+# Purpose: Wrapper around die() that uses pExit
+# Usage: Same as die()
+sub pDie
+{
+    warn(@_);
+    pExit(254);
+}
+
+# Purpose: Wrapper around exit that restores backups if needed
+# Usage: Same as exit()
+sub pExit
+{
+    my $ret = shift;
+    if (-e $storagePath.'~' && ! -e $storagePath)
+    {
+        print 'Note: while exiting '.$storagePath.'~ existed, but '.$storagePath.' did not.'."\n";
+        print 'Restored backup copy to '.$storagePath."\n";
+        move($storagePath.'~',$storagePath);
+    }
+    exit($ret);
+}
+
+# Purpose: Check for a file in path
+# Usage: InPath(FILE)
+sub InPath
+{
+	foreach (split /:/, $ENV{PATH}) { if (-x "$_/@_" and ! -d "$_/@_" ) {	return "$_/@_"; } } return false;
+}
+
+# Purpose: Copy a string to the clipboard if possible
+# Usage: $info = toClipboard(VALUE,RETURN_STRING);
+# VALUE is the value to copy to the clipboard
+# RETURN_STRING is a boolean, if it is true then toClipboard returns a
+# string, which is empty if nothing was done and ' (copied)' if something
+# was copied to the clipboard.
+sub toClipboard
+{
+    my $value = shift;
+    my $returnString = shift;
+    if (!$useXclip)
+    {
+        if ($returnString)
+        {
+            return '';
+        }
+        return;
+    }
+    if (!InPath('xclip') || !(defined($ENV{DISPLAY}) && length($ENV{DISPLAY})))
+    {
+        printv(V_LOG,'Use of xclip disabled: Either not installed, or no DISPLAY set'."\n");
+        if ($returnString)
+        {
+            return '';
+        }
+        return;
+    }
+    foreach my $target (@clipboardTargets)
+    {
+        open(my $write,'|-','xclip','-in','-selection',$target,'-silent') or return '';
+        print {$write} $value or return '';
+        close($write);
+    }
+    if ($returnString)
+    {
+        return ' (copied)';
+    }
+}
+
+# Purpose: Get a random password
+# Usage: $randomPwd = randomPwd();
+sub randomPwd
+{
+    my $length = shift;
+    $length //= 15;
+    my $pwd = '';
+    # These characters are chosen specifically because they are usually selectable in
+    # a terminal by simply double-clicking on the string.
+    my @chars = ('a'..'z','A'..'Z',0..9,',','.','/','?','%','&','#',':','_','=','+','@','~');
+    while(length($pwd) < $length)
+    {
+        $pwd .= $chars[ rand scalar @chars ];
+    }
+    return $pwd;
+}
+
+# Purpose: Read a file, decrypting it using gpg
+# Usage: gpgIn(PATH);
+# PATH is the path to the file to read
+sub gpgIn
+{
+    my $path = shift;
+    my $content;
+
+    if (!$requireAgent)
+    {
+        print '-- gpg --'."\n";
+    }
+
+    printv(V_LOG,'Reading data using: '.join(' ',@gpg).' --decrypt '.$path."\n");
+    open(my $in,'-|',@gpg,'--decrypt',$path) or pDie('Failed to open up communication with gpg: '.$!."\n");
+    while(<$in>)
+    {
+        $content .= $_;
+    }
+
+    if (!$requireAgent)
+    {
+        print '-- --- --'."\n";
+    }
+    if (!$verbosity)
+    {
+        print "\n";
+    }
+
+    if(not $content)
+    {
+        pDie('No data returned from gpg, giving up'."\n");
+    }
+
+    close($in) or pDie('Failed to close filehandle to gpg: '.$!."\n");
+
+    return $content;
+}
+
+# Purpose: Write a string to a file, encrypting it using gpg
+# Usage: gpgOut(PATH,DATA);
+# PATH is the path to the file to write the data to
+# DATA is the data to write to PATH
+sub gpgOut
+{
+    my $path         = shift;
+    my $data         = shift;
+    my $unlinkBackup = 1;
+
+    if (-e $path)
+    {
+        move($path,$path.'~') or pDie('Failed to create backup file: '.$!."\n".'Refusing to write data to avoid loss of previous data'."\n");
+    }
+    printv(V_LOG,'Writing data using: '.join(' ',@gpg).' --encrypt --output '.$path."\n");
+    open(my $out,'|-',@gpg,'--encrypt','--output',$path) or pDie('Failed to open up communication with gpg: '.$!."\n");
+    print {$out} $data or pDie('Failed to write data to gpg for output: '.$!."\n");
+    close($out) or do {
+        warn('Failed to close communication with gpg: '.$!."\n");
+        warn('Will not delete backup file in case of corruption.'."\n");
+        $unlinkBackup = 0;
+    };
+    chmod(0600,$path);
+
+    if ($unlinkBackup)
+    {
+        if ($forceUnsafe)
+        {
+            warn('--force-unsafe in effect: will not delete backup file in case of corruption'."\n".
+            'Note: Backup files are overwritten each time gpgpwd makes changes, so to avoid'."\n".
+            'losing it, you should copy it somewhere safe. It is at '.$path.'~'."\n");
+        }
+        else
+        {
+            unlink($path.'~');
+        }
+    }
+}
+
+# Purpose: Load the password database
+# Usage: $data = writeData(PATH);
+# PATH is the path to the location of the database
+# 
+# If PATH does not exist then it will return an empty (but usable)
+# $data ref.
+sub loadData
+{
+    my $path = shift;
+    if (!-e $path)
+    {
+        return {
+            gpgpwdDataVersion => $dataVersion,
+            pwds => {},
+        };
+    }
+
+    my $string = gpgIn($path);
+    my $data;
+
+    try
+    {
+        $data = decode_json($string);
+    }
+    catch
+    {
+        pDie('Failed to decode encrypted JSON data. The file is either not a gpgpwd'."\n".
+            'file, or the file is corrupt.'."\n".
+            'JSON error: '.$_."\n\n".
+            'If the file is a corrupt gpgpwd file, you may be able to recover it by'."\n".
+            'manually decrypting the file and then editing it.'."\n");
+    };
+
+    my $forceUnsafeMessage = "\n".'Ignoring this error may lead to data loss and corruption.'."\n".
+    'If you are sure that\'s what you want you may use --force-unsafe.'."\n";
+
+    if (!defined $data->{pwds} || ref($data->{pwds}) ne 'HASH')
+    {
+        if ($forceUnsafe)
+        {
+            warn('WARNING: Detected possible corruption in '.$path."\n".
+                'Continuing anyway because of --force-unsafe'."\n\n");
+        }
+        else
+        {
+            pDie('Detected possible corruption in '.$path.' - refusing to continue'."\n".$forceUnsafeMessage);
+        }
+    }
+    elsif(! defined($data->{gpgpwdDataVersion}))
+    {
+        if ($forceUnsafe)
+        {
+            warn('Warning: '.$path.': does not specify data format version.'."\n".
+                'Continuing anyway because of --force-unsafe'."\n\n");
+        }
+        else
+        {
+            pDie($path.': does not specify data format version - refusing to continue'."\n".$forceUnsafeMessage);
+        }
+    }
+    elsif ($data->{gpgpwdDataVersion} ne $dataVersion)
+    {
+        if ($forceUnsafe)
+        {
+            warn($path.' is version '.$data->{gpgpwdDataVersion}.' of the gpgpwd file format'."\n".
+                'This version only supports version '.$dataVersion.
+                'Continuing anyway because of --force-unsafe'."\n\n");
+        }
+        else
+        {
+            pDie($path.' is version '.$data->{gpgpwdDataVersion}.' of the gpgpwd file format'."\n".
+                'This version only supports version '.$dataVersion.' - refusing to continue'."\n");
+        }
+    }
+
+    $data->{pwds} //= {};
+
+    return $data;
+}
+
+# Purpose: Write the password database
+# Usage: writeData(PATH,$data);
+# PATH is the path to the location to write to
+# $data is the data hashref
+sub writeData
+{
+    my $path    = shift;
+    my $content = shift;
+    
+    my $encoded;
+
+    $content->{generator} = 'gpgpwd '.$VERSION.' - http://random.zerodogg.org/gpgpwd';
+    $content->{lastVersion} = $VERSION;
+    $content->{gpgpwdDataVersion} = $dataVersion;
+
+    try
+    {
+        $encoded = encode_json($content);
+    }
+    catch
+    {
+        pDie('Failed to encode data for JSON output. This is a bug!'."\n".
+            'JSON error: '.$_."\n");
+    };
+
+    if ($forceUnsafe)
+    {
+        print "\n";
+        print 'Running in --force-unsafe mode. Press Control+C (^C) to cancel'."\n";
+        print 'the writing now, to avoid possible corruption.'."\n";
+        print 'Continuing in ';
+        foreach(reverse 1..10)
+        {
+            print $_.'... ';
+            sleep(1);
+        }
+        print 'writing file...'."\n\n";
+    }
+
+    gpgOut($path,$encoded);
+
+    git('push',$path);
+}
+
+# Purpose: Load a list of passwords from a simple file
+# Usage: loadFromFile(FILE,$data);
+# $data is the data hashref
+# FILE is the path to the file to read
+sub loadFromFile
+{
+    my $file = shift;
+    my $data = shift;
+
+    my $line = 0;
+    my $read = 0;
+    open(my $in,'<',$file) or pDie('Failed to open '.$file.' for reading: '.$!."\n");
+    while(<$in>)
+    {
+        $line++;
+
+        chomp;
+
+        next if !/\S/;
+        next if !length($line);
+        next if /^#/;
+
+        my $name = $_;
+        my $pwd = $_;
+        
+        $name =~ s/^(\S+)\s+.*/$1/;
+        $pwd =~ s/^\S+\s+//;
+
+        if (!length($name) || !length($pwd) || $name eq $_ || $pwd eq $_)
+        {
+            pDie('Failed to parse line '.$line.' in '.$file."\n");
+        }
+        if ($data->{pwds}->{$name} && $data->{pwds}->{$name} ne $pwd)
+        {
+            print 'Changed '.$name.' from '.$data->{pwds}->{$name}.' to '.$pwd."\n";
+        }
+        $read++;
+        $data->{pwds}->{$name} = $pwd;
+    }
+    close($in);
+    print 'Read '.$read.' entries from '.$file."\n";
+}
+
+# Purpose: Retrieve a simplistic "file ID" string for a file
+# Usage: id = getFileID(FILE);
+# The ID string is a very simple string combining the file size and
+# file change time.
+sub getFileID
+{
+    my $file = shift;
+    if (! -e $file || ! -r $file)
+    {
+        pDie('Unable to read '.$file."\n");
+    }
+    my $ID = -s $file;
+    $ID .= '|';
+    $ID .= (stat($file))[9];
+    return $ID;
+}
+
+# Purpose: Set a password value in the database
+# Usage: set($data,NAME);
+# $data is the data hashref
+# NAME is the name of the entry to add
+sub set
+{
+    my $data = shift;
+    my $name = shift;
+
+    my $prompt = 'Password> ';
+    my $random = randomPwd();
+    my $copied = toClipboard($random,true);
+    print 'Enter the password you want to use, or press enter to use the random'."\n";
+    print 'password listed below.'."\n";
+    print 'Random password: '.$random.$copied."\n";
+    print 'Password> ';
+    my $password = <STDIN>;
+    chomp $password;
+    if (!length $password)
+    {
+        $password = $random;
+        print "\b\r".$prompt.$random."\n";
+    }
+
+    if(defined $data->{pwds}->{$name})
+    {
+        print 'Changed '.$name.' from '.$data->{pwds}->{$name}.' to '.$password."\n";
+    }
+    $data->{pwds}->{$name} = $password;
+}
+
+# Purpose: Get passwords from the database and output them to the user
+# Usage: get($data,NAME);
+# $data is the data hashref
+# NAME is the regex to search for
+sub get
+{
+    my $data  = shift;
+    my $name  = shift;
+    my $fuzzySearch = 0;
+    my $best;
+    my $matches;
+
+    foreach my $fuzzy (0..8)
+    {
+        my $pattern = $name;
+
+        if ($fuzzy > 1)
+        {
+            $pattern =~ s/\W//g;
+        }
+
+        my $regex;
+        if ($fuzzy == 0)
+        {
+            $regex = qr/$name/i or pDie('Failed to parse "'.$name.'" as a perl regular expression'."\n");
+        }
+        # Fuzzy method 1: Multiple words in wrong order
+        elsif($fuzzy == 1)
+        {
+            my @parts = split(/\W/,$name);
+            my $expr = '('.join('|',@parts).')';
+            $pattern = '';
+            while(defined shift(@parts))
+            {
+                if ($pattern)
+                {
+                    $pattern .= '.+';
+                }
+                $pattern .= $expr;
+            }
+            $regex = qr/$pattern/i;
+        }
+        # Fuzzy method 2: Simple typos or missing characters
+        elsif ($fuzzy < 6)
+        {
+            # This is done by first removing any 'non-word' character.
+            # Then each part is split into a regex that accepts the
+            # current, previous and next character in the word, as well as $fuzzy-1
+            # characters after this one, which can be anything.
+            # 
+            # Ie. the $name 'test', and $fuzzy=1 will become:
+            # [te][tes][est][st]
+            # 
+            # Whereas $fuzzy=4 will become:
+            # [te].?.?.?[tes].?.?.?[est].?.?.?[st].?.?.?
+            my @parts = split('',$pattern);
+            $pattern = '';
+            my $prev = '';
+            my $fuzzyNo = $fuzzy-1;
+            my $fuzzyString = '';
+            while($fuzzyNo--)
+            {
+                $fuzzyString .= '.?';
+            }
+            for(my $i = 0; $i < @parts; $i++)
+            {
+                my $part ='';
+                if ($i != 0)
+                {
+                    $part .= $parts[$i-1];
+                }
+                $part .= $parts[$i];
+                if ( defined $parts[$i+1])
+                {
+                    $part .= $parts[$i+1];
+                }
+                $pattern .= '['.$part.']'.$fuzzyString;
+            }
+            $regex = qr/$pattern/i;
+        }
+        # Fuzzy method 3: Extra characters, or other mistakes, inside the word
+        elsif ($fuzzy == 6)
+        {
+            # This is based upon the assumption that the first and last characters
+            # are correct, and that all characters that we need are present.
+            #
+            # All non-word characters are removed.
+            my @parts = split('',$pattern);
+            $pattern = $parts[0].'['.$pattern.']+'.$parts[-1];
+            $regex = qr/$pattern/;
+        }
+        # Fuzzy method 4: Correct length, incorrect order
+        elsif ($fuzzy == 7)
+        {
+            # This is very general, all non-word characters are removed, and
+            # we construct a character class consisting of all of the remaining
+            # characters. This character class has to be present at least length($word)
+            # times. This only works for short words, and isn't used if length > 8
+            next if length($name) > 8;
+            $pattern = '['.$pattern.']{'.length($pattern).'}';
+            $regex = qr/$pattern/;
+        }
+        # Fuzzy method 5: Acronym detection
+        elsif($fuzzy == 8)
+        {
+            # This is about as general as it can get. We assume all characters are
+            # present, but that it was added as an acronym. Ie. "example site" could
+            # be "es". It's extremely general and thus any match gets labelled
+            # "very fuzzy", instead of just "fuzzy". It also isn't used if the expression
+            # is longer than 12 characters.
+            next if length($name) > 12;
+            $fuzzySearch++;
+
+            $pattern = '^['.$pattern.']+$';
+            $regex = qr/$pattern/i;
+        }
+        else
+        {
+            pDie('Attempted to use unknown fuzzy method no. '.$fuzzy);
+        }
+
+        if ($fuzzy)
+        {
+            printv(V_LOG,'Trying fuzzy regex ('.$fuzzy.'): '.$pattern."\n");
+        }
+        ($matches,$best) = getMatches($data,$regex,$name);
+
+        if(keys %{$matches})
+        {
+            if ($fuzzy)
+            {
+                $fuzzySearch++;
+            }
+            last;
+        }
+    }
+
+    if (! (keys %{$matches}))
+    {
+        print '(no passwords found for "'.$name.'")'."\n";
+        return;
+    }
+    
+    print 'Passwords:';
+    if ($fuzzySearch)
+    {
+        print ' (found using ';
+        if ($fuzzySearch > 1)
+        {
+            print 'very ';
+        }
+        print 'fuzzy search)';
+    }
+    print "\n";
+
+    foreach my $entry (sort keys %{$matches})
+    {
+        next if $entry eq $best;
+        outputEntry($entry,$matches->{$entry},0);
+    }
+    outputEntry($best,$matches->{$best},true);
+}
+
+# Purpose: Get data entries that match a given regex
+# Usage: ($matches,$best) = getMatches($data,$regex,$name);
+sub getMatches
+{
+    my $data = shift;
+    my $regex = shift;
+    my $name = shift;
+    my $last;
+    my $best;
+
+    my %matches;
+
+    foreach my $key (sort keys %{$data->{pwds}})
+    {
+        if ($key =~ $regex)
+        {
+            $last = $key;
+            $matches{$key} = $data->{pwds}->{$key};
+            if ($key eq $name)
+            {
+                $best = $key;
+            }
+        }
+    }
+    $best //= $last;
+    return(\%matches,$best);
+}
+
+# Purpose: Output a password
+# Usage: outputEntry(KEY,VALUE,COPY);
+# KEY is the title
+# VALUE is the content (ie. password)
+# COPY is a bool, if true it will toClipboard() the VALUE
+sub outputEntry
+{
+    my $key = shift;
+    my $value = shift;
+    my $copy = shift;
+    my $copied = '';
+    if ($copy)
+    {
+        $copied = toClipboard($value,true);
+    }
+
+    printf('%-20s: %s'."\n",$key,$value.$copied);
+}
+
+# Purpose: Perform git actions
+# Usage: git(ACTION,PATH);
+# PATH is the path to the data file we are operating on
+# ACTION is one of:
+#   pull       Pull changes
+#   safepull   Pull changes IF we have an ssh agent
+#   push       Push changes
+sub git
+{
+    my $command = shift;
+    my $path    = shift;
+
+    if (!$enableGit)
+    {
+        return;
+    }
+
+    my $cwd = getcwd;
+    chdir(dirname($path));
+
+    given($command)
+    {
+        when('safepull')
+        {
+            if ($ENV{SSH_AGENT_PID})
+            {
+                $_ = 'pull';
+                continue;
+            }
+            else
+            {
+                printv(V_INFO,'Not pulling since there is no SSH_AGENT_PID environment variable'."\n");
+            }
+        }
+
+        when('pull')
+        {
+            if ($fastGitMode)
+            {
+                print "\n(git): ";
+            }
+            elsif (!$fastGitMode)
+            {
+                print 'Pulling git repository...'."\n";
+            }
+            if (psystem('git','pull','--rebase','--quiet') != 0)
+            {
+                if(psystem('git','pull','--quiet') != 0)
+                {
+                    pDie('Failed to git pull, you must manually resolve the conflict'."\n");
+                }
+            }
+        }
+
+        when('push')
+        {
+            print 'Pushing git repository...'."\n";
+            psystem('git','add',basename($path));
+            psystem('git','commit','--quiet','-m','Update by gpgpwd',basename($path));
+            psystem('git','push','--quiet');
+        }
+    }
+
+    chdir($cwd);
+}
+
+# Purpose: Output our usage information and (optionally) exit
+# Usage: usage(N);
+#  If N is supplied, will pExit(N) after outputting.
+sub usage
+{
+    my $exitValue = shift;
+
+    print "\n";
+    print 'USAGE: '.basename($0).' [OPTIONS]? [COMMAND] [PARAMETERS]'."\n";
+    print "\n";
+    print "Options:\n";
+    printHelp('','--help','View this help screen');
+    printHelp('','--version','Display version information and exit');
+    printHelp('-v','--verbose','Increase verbosity (can be supplied multiple times)');
+    printHelp('-p','--password-file','Save passwords to this file instead of ~/.gpgpwddb');
+    printHelp('-g','--git','Enable git mode (makes gpgpwd pull, commit and push the password file, see the manpage for details)');
+    printHelp('','--fast-git','Enable fast git mode (like git mode, but pulls after getting a password)');
+    printHelp('-G','--no-git','Disable git mode (overriding --git and --fast-git)');
+    printHelp('','--no-xclip','Disable copying of passwords to the clipboard when running under X');
+    printHelp('-c','--xclip-clipboard','Use the clipboard supplied instead of the default, see the manpage for details');
+    printHelp('-r','--require-agent','Require use of gpg-agent when prompting for passwords. This reduces gpg verbosity');
+    printHelp('-R','--no-require-agent','Don\'t require use of gpg-agent when prompting for passwords. This will override --require-agent');
+    printHelp('-T','--try-require-agent','If a gpg-agent is running, require it to be used, otherwise prompt for passwords');
+    printHelp('','--disable-agent','Disable all use of gpg-agent (implies -R)');
+    printHelp('','--debuginfo','Display some information that can be useful for debugging');
+    print "\n";
+    print "Commands:\n";
+    printHelp('','get RX','Get password for RX (where RX can be a perl-compatible regular expression)');
+    printHelp('','set X','Add or change password for X');
+    printHelp('','remove X','Remove the entry for X');
+    printHelp('','rename X Y','Rename the entry for X to Y');
+    printHelp('','batchadd X','Batch add passwords from a file, see the manpage for the file syntax');
+
+    if (defined $exitValue)
+    {
+        pExit($exitValue);
+    }
+}
+
+# Purpose: Print formatted --help output
+# Usage: printHelp('-shortoption', '--longoption', 'description');
+#  Description will be reformatted to fit within a normal terminal
+sub printHelp
+{
+	# The short option
+	my $short = shift,
+	# The long option
+	my $long = shift;
+	# The description
+	my $desc = shift;
+	# The generated description that will be printed in the end
+	my $GeneratedDesc;
+	# The current line of the description
+	my $currdesc = '';
+	# The maximum length any line can be
+	my $maxlen = 80;
+	# The length the options take up
+	my $optionlen = 20;
+	# Check if the short/long are LONGER than optionlen, if so, we need
+	# to do some additional magic to take up only $maxlen.
+	# The +1 here is because we always add a space between them, no matter what
+	if ((length($short) + length($long) + 1) > $optionlen)
+	{
+		$optionlen = length($short) + length($long) + 1;
+	}
+	# Split the description into lines
+	foreach my $part (split(/ /,$desc))
+	{
+		if(defined $GeneratedDesc)
+		{
+			if ((length($currdesc) + length($part) + 1 + 24) > $maxlen)
+			{
+				$GeneratedDesc .= "\n";
+				$currdesc = '';
+			}
+			else
+			{
+				$currdesc .= ' ';
+				$GeneratedDesc .= ' ';
+			}
+		}
+		$currdesc .= $part;
+		$GeneratedDesc .= $part;
+	}
+	# Something went wrong
+	die('Option mismatch') if not $GeneratedDesc;
+	# Print it all
+	foreach my $description (split(/\n/,$GeneratedDesc))
+	{
+		printf "%-4s %-19s %s\n", $short,$long,$description;
+		# Set short and long to '' to ensure we don't print the options twice
+		$short = '';$long = '';
+	}
+	# Succeed
+	return true;
+}
+
+# Purpose: Get the version of a shell utility
+# Usage: version = getVersionFrom('command');
+sub getVersionFrom
+{
+    if (!InPath($_[0]))
+    {
+        return 'not installed';
+    }
+    eval('use IPC::Open3 qw(open3);');
+    open3(my $in, my $out, my $err,@_);
+    my $data;
+    if ($out)
+    {
+        while(<$out>)
+        {
+            $data .= $_;
+        }
+    }
+    if ($err)
+    {
+        while(<$err>)
+        {
+            $data .= $_;
+        }
+        close($err);
+    }
+    close($in);close($out);
+    $data =~ s/^\D+(\S+).+/$1/s;
+    return $data;
+}
+
+# Purpose: Output some information useful for debugging and then exit
+# Usage: debugInfo();
+sub debugInfo
+{
+    print "gpgpwd version $VERSION\n";
+	print "\n";
+	my $pattern = "%-28s: %s\n";
+    printf($pattern,'Data file',$storagePath);
+    printf($pattern, 'Perl version', sprintf('%vd',$^V));
+    printf($pattern, 'gpg version', getVersionFrom('gpg','--version'));
+    printf($pattern, 'gpg2 version', getVersionFrom('gpg2','--version'));
+    printf($pattern, 'xclip version',getVersionFrom('xclip','-version'));
+    printf($pattern,'git version',getVersionFrom('git','--version'));
+
+    my $flags = '';
+    foreach my $flag (qw(enableGit forceUnsafe requireAgent useGpgAgent useXclip))
+    {
+        if (! eval('$'.$flag))
+        {
+            next;
+        }
+        $flags .= $flag.' ';
+    }
+    printf($pattern,'flags',$flags);
+
+    eval('use Digest::MD5;');
+    my $md5 = Digest::MD5->new();
+    my $self = $0;
+    if(not -f $self)
+    {
+        $self = InPath($self);
+    }
+    open(my $f,'<',$self);
+    $md5->addfile($f);
+    my $digest = $md5->hexdigest;
+    close($f);
+    printf($pattern,'MD5',$digest);
+
+    pExit(0);
+}
+
+# Purpose: Main entry point
+# Usage: main()
+sub main
+{
+    $| = 1;
+
+    my $noRequireAgent = false;
+    my $noGit = false;
+
+    if (!InPath('gpg') && !InPath('gpg2'))
+    {
+        pDie('Failed to locate gpg which is required for gpgpwd to work, unable to continue'."\n");
+    }
+
+    if (@ARGV == 0)
+    {
+        usage(0);
+    }
+
+    Getopt::Long::Configure('no_ignore_case','bundling');
+
+    GetOptions(
+        'help' => sub {
+            usage(0);
+        },
+        'version' => sub
+        {
+            print 'gpgpwd version '.$VERSION."\n";
+            pExit(0);
+        },
+        'v|verbose+' => \$verbosity,
+        'force-unsafe' => sub
+        {
+            warn('WARNING: Running in --force-unsafe mode. Data corruption may occur!'."\n");
+            $forceUnsafe = true;
+        },
+        'p|password-file=s' => \$storagePath,
+        'fast-git' => sub {
+            $enableGit = 1;
+            $fastGitMode = 1;
+        },
+        'g|git' => \$enableGit,
+        'G|no-git' => \$noGit,
+        'debuginfo' => \&debugInfo,
+        'no-xclip' => sub { $useXclip = false; },
+        'c|xclip-clipboard=s' => sub
+        {
+            shift;
+            my $value = shift;
+
+            given($value)
+            {
+                when('both')
+                {
+                    @clipboardTargets = qw(primary clipboard);
+                }
+                when('clipboard')
+                {
+                    @clipboardTargets = qw(clipboard);
+                }
+                when('selection')
+                {
+                    @clipboardTargets = qw(primary);
+                }
+                default
+                {
+                    pDie('Unknown value for --xclip-cilpboard: '.$value."\n");
+                }
+            }
+        },
+        'r|require-agent' => \$requireAgent,
+        'R|no-require-agent' => \$noRequireAgent,
+        'T|try-require-agent' => sub
+        {
+            if ($ENV{GPG_AGENT_INFO})
+            {
+                $requireAgent = true;
+            }
+            else
+            {
+                $noRequireAgent = true;
+                $useGpgAgent = false;
+            }
+        },
+        'disable-agent' => sub {
+            $useGpgAgent = false;
+        },
+    ) or pDie('See --help for more information'."\n");
+
+    my $command = shift(@ARGV);
+
+    if (!$command)
+    {
+        usage(0);
+    }
+
+    if (!InPath('gpg'))
+    {
+        # Note: If gpg isn't installed then we *know* gpg2 is installed,
+        # because if neither is installed we refuse to run at all (test at the
+        # top of main() )
+        printv(V_INFO,'Using gpg2 instead of gpg'."\n");
+        $gpg[0] = 'gpg2';
+        if (! $useGpgAgent)
+        {
+            pDie('You only have gpg2 installed (not gpg). --disable-agent does not work with gpg2'."\n");
+        }
+    }
+
+    # Verify that we're able to read and write to $storagePath, as well as
+    # the directory $storagePath is located in (for backup files).
+    if (-e $storagePath && ! -r $storagePath)
+    {
+        pDie($storagePath.': is not readable');
+    }
+    elsif (-e $storagePath && ! -w $storagePath)
+    {
+        pDie($storagePath.': is not writeable'."\n");
+    }
+    if ( ! -w dirname($storagePath) )
+    {
+        if (-e $storagePath)
+        {
+            warn('WARNING: '.dirname($storagePath).' is not writable, gpgpwd may be unable'."\n".'to create backup files!'."\n");
+        }
+        else
+        {
+            pDie(dirname($storagePath).': is not writeable'."\n");
+        }
+    }
+
+    # Unset requireAgent if --no-require-agent or --disable-agent  was specified.
+    if ($noRequireAgent || !$useGpgAgent)
+    {
+        $requireAgent = false;
+    }
+    # Add --no-tty to gpg's parameter list to reduce its output and
+    # require a gpg-agent.
+    elsif($requireAgent)
+    {
+        push(@gpg,'--no-tty');
+    }
+    if ($useGpgAgent)
+    {
+        push(@gpg,'--use-agent');
+    }
+    else
+    {
+        $requireAgent = false;
+        push(@gpg,'--no-use-agent');
+    }
+
+    # Disable --git if --no-git was supplied
+    if ($noGit)
+    {
+        $enableGit   = false;
+        $fastGitMode = false;
+    }
+
+    given($command)
+    {
+        when('get')
+        {
+            my $fileID = getFileID($storagePath);
+            if(! @ARGV)
+            {
+                warn('Missing parameter to get: what to retrieve'."\n");
+                usage(103);
+            }
+            elsif(@ARGV != 1)
+            {
+                pDie('Too many parameters for "get"'."\n");
+            }
+
+            if (!$fastGitMode)
+            {
+                git('safepull',$storagePath);
+            }
+            my $data = loadData($storagePath);
+            get($data,@ARGV);
+
+            if ($fastGitMode)
+            {
+                git('safepull',$storagePath);
+                # If the file has changed due to the pull, then we re-fetch
+                if ($fileID ne getFileID($storagePath))
+                {
+                    print "\n";
+                    print "File updated by git, re-reading passwords:\n";
+                    my $data = loadData($storagePath);
+                    get($data,@ARGV);
+                }
+            }
+        }
+
+        when('batchadd')
+        {
+            if (!@ARGV)
+            {
+                warn('Missing parameter to batchadd: path to the file to read'."\n");
+                usage(104);
+            }
+            elsif(@ARGV != 1)
+            {
+                pDie('Too many parameters for "batchadd"'."\n");
+            }
+            git('pull',$storagePath);
+            my $data = loadData($storagePath);
+            loadFromFile(shift(@ARGV),$data);
+            writeData($storagePath,$data);
+        }
+
+        when('remove')
+        {
+            if (!@ARGV)
+            {
+                warn('Missing parameter to remove: what to remove'."\n");
+                usage(104);
+            }
+            elsif(@ARGV != 1)
+            {
+                pDie('Too many parameters for "remove"'."\n");
+            }
+            my $name = shift(@ARGV);
+
+            git('pull',$storagePath);
+            my $data = loadData($storagePath);
+            if ($data->{pwds}->{$name})
+            {
+                print 'Removed '.$name.' (with the password '.$data->{pwds}->{$name}.')'."\n";
+                delete($data->{pwds}->{$name});
+            }
+            else
+            {
+                print 'No entry named '.$name.' found. Doing nothing.'."\n";
+                pExit(0);
+            }
+            writeData($storagePath,$data);
+        }
+
+        when('add')
+        {
+            $_ = 'set';
+            continue;
+        }
+
+        when('set')
+        {
+            if (!@ARGV)
+            {
+                warn('Missing parameter to set: what to set'."\n");
+                usage(104);
+            }
+            elsif(@ARGV != 1)
+            {
+                pDie('Too many parameters for "set" (note that you will be prompted for a password)'."\n");
+            }
+            git('pull',$storagePath);
+            my $data = loadData($storagePath);
+            set($data,@ARGV);
+            writeData($storagePath,$data);
+        }
+
+        when('rename')
+        {
+            my $old = shift(@ARGV);
+            my $new = shift(@ARGV);
+            if (!defined $old)
+            {
+                warn('Missing parameters to rename: old name, new name'."\n");
+                usage(104);
+            }
+            elsif (!defined $new)
+            {
+                warn('Missing parameters to rename: new name'."\n");
+                usage(104);
+            }
+            elsif(@ARGV != 0)
+            {
+                pDie('Too many parameters for "rename"'."\n");
+            }
+            git('pull',$storagePath);
+            my $data = loadData($storagePath);
+
+            my $entry = $data->{pwds}->{$old};
+            if (!defined $entry)
+            {
+                pDie('Failed to find "'.$old.'". Note that you must specify the exact name when'."\n".'using "rename", as it does no fuzzy searching'."\n");
+            }
+            $data->{pwds}->{$new} = $entry;
+            delete($data->{pwds}->{$old});
+
+            print 'Renamed the entry for '.$old.' to '.$new."\n";
+
+            writeData($storagePath,$data);
+        }
+
+        default
+        {
+            warn "Unknown command: $command\n";
+            usage(102);
+        }
+    }
+    pExit(0);
+}
+
+main();
+__END__
+
+=encoding utf8
+
+=head1 NAME
+
+gpgpwd - a command-line password manager based around GnuPG
+
+=head1 SYNOPSIS
+
+B<gpgpwd> [I<OPTIONS>] [I<COMMAND>] [I<PARAMETERS>]
+
+=head1 DESCRIPTION
+
+B<gpgpwd> is a terminal-based password manager. It stores a list of passwords
+in a GnuPG encrypted file, and allows you to easily retrieve, change and add to
+that file as needed. It also generates random passwords that you can use,
+easily allowing you to have one "master password" (for your gpg key), with
+one unique and random password for each website or service you use, ensuring
+that your other accounts stay safe even if one password gets leaked.
+
+B<gpgpwd> can also utilize git(1) to allow you to easily synchronize your
+passwords between different machines.
+
+=head1 OPTIONS
+
+=over
+
+=item B<--help>
+
+Display the help screen
+
+=item B<--version>
+
+Output the gpgpwd version and exit
+
+=item B<-v, --verbose>
+
+Increase gpgpwd verbosity. May be supplied multiple times to further increase
+verbosity.
+
+=item B<-p, --password-file> I<FILE>
+
+Set the password file to I<FILE> instead of the default. This changes where
+gpgpwd reads and writes the password database.
+
+You may supply several --password-file arguments, but only the last one
+will be used.
+
+=item B<-g, --git>
+
+Enables git(1) mode. This causes gpgpwd to I<git pull> before it writes any
+change to the file, and I<git commit> and I<git push> after a change has been
+made (it will also pull in read mode, but only if it detects a running ssh-agent).
+This can be used to keep a password database in sync between several different
+computers.
+
+=item B<--fast-git>
+
+Enables fast git(1) mode. This is identical to I<--git> mode except for when
+gpgpwd is in read ("get") mode. In read mode it will pull B<after> getting a
+password instead of before, giving you faster access to your passwords. If it
+detects that the password file has changed after pulling, gpgpwd will process
+your get request again, in case the password you wanted has changed.
+
+=item B<-G, --no-git>
+
+Disables git(1) mode. This will override any --git parameters that you have
+specified. This can be useful if you have a shell alias that adds --git to
+the default gpgpwd parameters, but you want to operate on a different
+--password-file that is not in git.
+
+=item B<--no-xclip>
+
+Disables use of xclip(1). By default gpgpwd will copy passwords to the clipboard
+for easy pasting into password fields. When this option is supplied it supresses
+this behaviour.
+
+=item B<-c, --xclip-clipboard> I<CLIPBOARD>
+
+By default gpgpwd will copy passwords to the clipboard (the one that pastes through
+the usual I<ctrl+v> or "right click -> paste" means). With this you can change it.
+It accepts the following parameters as I<CLIPBOARD>:
+
+=over
+
+=item I<clipboard>
+
+The default, copies to the 'normal' clipboard. Paste with ie. I<ctrl+v>.
+
+=item I<selection>
+
+Copy to the 'selection' clipboard. Paste with ie. middle-click.
+
+=item I<both>
+
+Copy to both the 'normal' and 'selection' clipboards.
+
+=back
+
+=item B<-r, --require-agent>
+
+Require use of gpg-agent when prompting for passwords. This allows gpgpwd to
+reduce the verbosity of gpg, resulting in more compact output, with the caveat
+that gpg won't prompt you for your password if gpg-agent fails.
+
+=item B<-R, --no-require-agent>
+
+Forces gpgpwd not to require a gpg-agent. This will override any --require-agent
+parameters that have been specified. This can be useful if you generally have
+an agent available and like the output when I<--require-agent> is in affect
+better, but sometimes have to use gpgpwd when an agent is unavailable. Ie.
+if you have a shell alias that adds --require-agent to the default gpgpwd
+parameters, you can use -R to override that.
+
+=item B<-T, --try-require-agent>
+
+If a gpg-agent is running (if the GPG_AGENT_INFO environment variable is set)
+this acts like --require-agent, if it is not then this acts as
+--disable-agent.
+
+=item B<--disable-agent>
+
+Disables all use of gpg-agent. This option implies --no-require-agent.
+
+=item B<--debuginfo>
+
+Display some information useful for debugging.
+
+=back
+
+=head1 COMMANDS
+
+=over
+
+=item B<get> I<NAME>
+
+Get the password for NAME. NAME can be a perl-compatible regular expression. If
+no matches are found gpgpwd will attempt to perform a fuzzy search, to see if
+something similar can be found (ie. to correct for typos).
+
+If you want to retrieve your entire database you may simply supply . as NAME,
+since it accepts a regular expression and . will match everything.
+
+=item B<set> I<NAME>
+
+Set (add or change) the password for NAME. You will be prompted interactively for the
+password, and will be given a random password that you may use if you wish.
+
+=item B<remove> I<NAME>
+
+Remove the password for NAME from the database.
+
+=item B<rename> I<OLDNAME> I<NEWNAME>
+
+Rename the entry for OLDNAME to NEWNAME.
+
+=item B<batchadd> I<FILE>
+
+Read and add a list of passwords from FILE. The format is simple:
+
+    NAME PASSWORD
+
+Everything up until the first bit of whitespace is taken to be the name,
+and everything from the first non-whitespace character after that and
+until the end of the line is taken to be the password. It will ignore
+empty lines and lines starting with #.
+
+=back
+
+=head1 EXAMPLES
+
+=over
+
+=item gpgpwd set test
+
+Add a password for 'test' to the database, gpgpwd will prompt you for the password.
+
+=item gpgpwd get test
+
+Retrieve the password we just added.
+
+=item gpgpwd remove test
+
+Remove test from the adatabase
+
+=item gpgpwd -g set testpwd
+
+Add the password for testpwd to the database and commit+push the file using
+git afterwards.
+
+=item gpgpwd --xclip-clipboard both get testpwd
+
+Get the password for testpwd, copying it to both the selection and regular
+clipboards.
+
+=item gpgpwd rename testpwd test-password
+
+Rename 'testpwd' to 'test-password'.
+
+=back
+
+=head1 HELP/SUPPORT
+
+If you need additional help, please visit the website at
+L<http://random.zerodogg.org/gpgpwd>
+
+=head1 BUGS AND LIMITATIONS
+
+If you find a bug, please report it at L<http://random.zerodogg.org/gpgpwd/bugs>
+
+Include the output of 'gpgpwd --debuginfo' in any bug report.
+
+=head1 AUTHOR
+
+B<gpgpwd> is written by Eskild Hustvedt I<<code aatt zerodogg d0t org>>
+
+=head1 FILES
+
+=over
+
+=item I<~/.gpgpwddb>
+
+The default save location for the password database, overrideable by using
+I<--password-file>.
+
+=back
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) Eskild Hustvedt 2012
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see L<http://www.gnu.org/licenses/>.
