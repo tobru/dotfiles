@@ -42,7 +42,7 @@ unset config_files
 ## handle ssh agent
 if ! [ -x "$SSH_AUTH_SOCK" ]; then
   eval $($HOME/.dotfiles/bin/keychain --eval -q)
-elif
+fi
 
 ### path handling
 [[ -d "$HOME/bin" ]] && PATH="$HOME/bin:$PATH"
