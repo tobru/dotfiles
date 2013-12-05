@@ -27,11 +27,13 @@ Bundle 'scrooloose/syntastic'
 " Vim script for text filtering and alignment
 Bundle 'godlygeek/tabular'
 " Vimwiki
-Bundle 'vimwiki/vimwiki'
+"Bundle 'vimwiki/vimwiki'
 " Tab Completion
 "Bundle 'Shougo/neocomplcache.vim'
 " Open Files with Command-T
 "Bundle 'wincent/Command-T'
+" follow internal links of the wiki
+Bundle 'mmai/wikilink'
 
 " Syntax plugins
 Bundle 'hail2u/vim-css3-syntax'
@@ -141,3 +143,4 @@ let g:vimwiki_ext2syntax = {'.md': 'markdown', '.mkd': 'markdown', '.wiki': 'med
 " neocomplcache
 let g:neocomplcache_enable_at_startup = 1
 
+let wikilinkAutosplit="off"
