@@ -7,6 +7,7 @@ commit()
 		cd "$datadir"
 		git add -A .
 		git commit -a -m "Auto-Commit by gitary on $HOSTNAME"
+    git push
 	)
 }
 
