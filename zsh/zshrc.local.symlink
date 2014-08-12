@@ -57,7 +57,7 @@ elif [[ "$TERM" == screen ]]; then
 fi
 
 ### syntax highlighter
-ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
+ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern)
 
 ## history search plugin
 zmodload zsh/terminfo
