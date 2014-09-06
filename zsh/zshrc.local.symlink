@@ -64,3 +64,6 @@ zmodload zsh/terminfo
 bindkey "$terminfo[kcuu1]" history-substring-search-up
 bindkey "$terminfo[kcud1]" history-substring-search-down
 
+# fix home/end keys
+bindkey "^[[1~" beginning-of-line
+bindkey "^[[4~" end-of-line
