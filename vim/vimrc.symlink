@@ -27,7 +27,7 @@ Bundle 'scrooloose/syntastic'
 " Vim script for text filtering and alignment
 Bundle 'godlygeek/tabular'
 " Vimwiki
-"Bundle 'vimwiki/vimwiki'
+Bundle 'vimwiki/vimwiki'
 " Tab Completion
 "Bundle 'Shougo/neocomplcache.vim'
 " Open Files with Command-T
