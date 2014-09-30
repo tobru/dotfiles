@@ -1,86 +1,197 @@
-set nocompatible               " be iMproved
-filetype off                   " required!
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Managed with VAM
+" https://github.com/MarcWeber/vim-addon-manager
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-"" Vundle!
-set rtp+=~/.vim/bundle/vundle/
-call vundle#rc()
+set nocompatible | filetype indent plugin on | syn on
 
-" let Vundle manage Vundle
-" required! 
-Bundle 'gmarik/vundle'
+fun! SetupVAM()
+  let c = get(g:, 'vim_addon_manager', {})
+  let g:vim_addon_manager = c
+  let c.plugin_root_dir = expand('$HOME', 1) . '/.vim/vim-addons'
+  " most used options you may want to use:
+  " let c.log_to_buf = 1
+  " let c.auto_install = 0
+  let &rtp.=(empty(&rtp)?'':',').c.plugin_root_dir.'/vim-addon-manager'
+  if !isdirectory(c.plugin_root_dir.'/vim-addon-manager/autoload')
+    execute '!git clone --depth=1 git://github.com/MarcWeber/vim-addon-manager '
+        \       shellescape(c.plugin_root_dir.'/vim-addon-manager', 1)
+  endif
 
-""" Bundles / Plugins
+  " This provides the VAMActivate command, you could be passing plugin names, too
+  call vam#ActivateAddons([], {})
+endfun
+call SetupVAM()
+" use <c-x><c-p> to complete plugin names
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Plugin loading
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+" libs
+VAMActivate vim-addon-mw-utils
+VAMActivate tlib
+
+" statusline
+VAMActivate vim-airline
+
+" snippet management
+VAMActivate UltiSnips
+VAMActivate vim-snippets
+
 " GIT helper
-Bundle 'tpope/vim-fugitive'
-" Statusline
-"disabled Bundle 'Lokaltog/powerline', {'rtp': 'powerline/bindings/vim/'}
-Bundle 'bling/vim-airline'
-" Snipplets
-Bundle 'tomtom/tlib_vim'
-Bundle 'MarcWeber/vim-addon-mw-utils'
-Bundle 'garbas/vim-snipmate'
-Bundle 'honza/vim-snippets'
+VAMActivate fugitive
+
 " Puppet helper
-Bundle 'netdata/vim-puppet'
+VAMActivate github:rodjek/vim-puppet
+
 " Syntax checking hacks for vim
-Bundle 'scrooloose/syntastic'
+VAMActivate Syntastic
+
 " Vim script for text filtering and alignment
-Bundle 'godlygeek/tabular'
+VAMActivate Tabular
+
 " Vimwiki
-Bundle 'vimwiki/vimwiki'
-" Tab Completion
-"Bundle 'Shougo/neocomplcache.vim'
-" Open Files with Command-T
-"Bundle 'wincent/Command-T'
-" follow internal links of the wiki
-Bundle 'mmai/wikilink'
+VAMActivate vimwiki
+
+" Completion
+VAMActivate YouCompleteMe
 
 " Syntax plugins
-Bundle 'hail2u/vim-css3-syntax'
-Bundle 'othree/html5-syntax.vim'
-Bundle 'tpope/vim-markdown'
+VAMActivate vim-css3-syntax
+VAMActivate html5
+VAMActivate Markdown
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Vim Behavior
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+set hidden                                                " don't unload buffer when switching away
+set modeline                                              " allow per-file settings via modeline
+set secure                                                " disable unsafe commands in local .vimrc files
+set encoding=utf-8 fileencoding=utf-8 termencoding=utf-8  " saving and encoding
+set nobackup nowritebackup noswapfile autoread            " no backup or swap
+set hlsearch incsearch ignorecase smartcase               " search
+set wildmenu                                              " completion
+set backspace=indent,eol,start                            " sane backspace
+set clipboard=unnamed,unnamedplus                         " use the system clipboard for yank/put/delete
+set mouse=a                                               " enable mouse for all modes settings
+set nomousehide                                           " don't hide the mouse cursor while typing
+set mousemodel=popup                                      " right-click pops up context menu
+set ruler                                                 " show cursor position in status bar
+set number                                                " show absolute line number of the current line
+set nofoldenable                                          " I fucking hate code folding
+set scrolloff=10                                          " scroll the window so we can always see 10 lines around the cursor
+set textwidth=80                                          " wrap at 80 characters like a valid human
+set cursorline                                            " highlight the current line
+set cursorcolumn                                          " highlight the current line
+set printoptions=paper:a4                                 " use A4 as the print output format
+set guioptions-=T                                         " turn off GUI toolbar (icons)
+set guioptions-=r                                         " turn off GUI right scrollbar
+set guioptions-=L                                         " turn off GUI left scrollbar
+set winaltkeys=no                                         " turn off stupid fucking alt shortcuts
+set laststatus=2                                          " always show status bar
+set list                                                  " Show invisible characters
+set showcmd                                               " the bottom line in your editor will show you information about the current command going on
+set nowrap                                                " don't wrap lines
+
+
+" check the parent directories for tags, too.
+set tags=./tags,tags;$HOME
+
+" middle-click paste
+noremap! <s-insert> <middlemouse>
+
+" Searching
+set hlsearch     " highlight matches
+set incsearch    " incremental searching
+set ignorecase   " searches are case insensitive...
+set smartcase
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Appearance
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 syntax on
-""filetype plugin indent on
-filetype plugin on
+set background=dark
+set t_Co=256 " 256 colors in terminal
 
-set modeline
-set ruler
-set showcmd
+if has('gui_gnome')
+  set guifont=Ubuntu\ Mono\ 8.4
+endif
 
-"" Whitespace
-set nowrap " don't wrap lines
-set tabstop=2 " a tab is two spaces
-set shiftwidth=2 " an autoindent (with <<) is two spaces
-set expandtab " use spaces, not tabs
-set list " Show invisible characters
-set backspace=indent,eol,start " backspace through everything in insert mode
+
+" Tweaks for Molokai colorscheme (ignored if Molokai isn't used)
+let g:molokai_original=1
+let g:rehash256=1
+
+" Use the first available colorscheme in this list
+for scheme in [ 'solarized', 'molokai', 'desert' ]
+  try
+    execute 'colorscheme '.scheme
+    break
+  catch
+    continue
+  endtry
+endfor
+
+" highlight the 80th column
+"
+" In Vim >= 7.3, also highlight columns 120+
+if exists('+colorcolumn')
+  " (I picked 120-320 because you have to provide an upper bound and 500 seems
+  " to be enough.)
+  let &colorcolumn="80,".join(range(120,500),",")
+else
+  " fallback for Vim < v7.3
+  autocmd BufWinEnter * let w:m2=matchadd('ErrorMsg', '\%>80v.\+', -1)
+endif
 
 " List chars
-set listchars="" " Reset the listchars
-set listchars=tab:\ \ " a tab should display as " ", trailing whitespace as "."
-set listchars+=trail:. " show trailing spaces as dots
-set listchars+=extends:> " The character to show in the last column when wrap is
-" off and the line continues beyond the right of the screen
-set listchars+=precedes:< " The character to show in the first column when wrap is
-" off and the line continues beyond the left of the screen
-"set listchars=nbsp:Â¬ " show non-breaking spaces
+set listchars=""             " Reset the listchars
+set listchars=tab:\ \        " a tab should display as " ", trailing whitespace as "."
+set listchars+=trail:.       " show trailing spaces as dots
+set listchars+=extends:>     " The character to show in the last column when wrap is
+                             " off and the line continues beyond the right of the screen
+set listchars+=precedes:<    " The character to show in the first column when wrap is
+                             " off and the line continues beyond the left of the screen
 
-"" Searching
-set hlsearch " highlight matches
-set incsearch " incremental searching
-set ignorecase " searches are case insensitive...
-set smartcase 
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Formatting
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-" Set the status line the way i like it
-"set stl=%f\ %m\ %r%{fugitive#statusline()}\ Line:%l/%L[%p%%]\ Col:%v\ Buf:#%n\ [%b][0x%B]
-" tell VIM to always put a status line in, even if there is only one window
-" "https://wincent.com/wiki/Set_the_Vim_statusline
-set statusline=%<\ %f\%m%r\ %y\ %{fugitive#statusline()}\ %=%-35.(Line:\ %l\ of\ %L,\ Col:\ %c%V\ Buf:#%n\ (%P)%)
-set laststatus=2
+filetype plugin indent on
+set shiftwidth=2 tabstop=2 softtabstop=2 expandtab autoindent
+autocmd filetype c,asm,python setlocal shiftwidth=4 tabstop=4 softtabstop=4
+autocmd FileType make setlocal noexpandtab
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Plugin Helpers and Options
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+"" Airline
+let g:airline#extensions#tabline#enabled = 1
+"let g:airline_powerline_fonts = 1
+
+"" vimwiki
+let g:vimwiki_ext2syntax = {'.md': 'markdown', '.mkd': 'markdown', '.wiki': 'media'}
+
+"" fugitive shortcuts
+noremap \gs :Gstatus<cr>
+noremap \gc :Gcommit<cr>
+noremap \ga :Gwrite<cr>
+noremap \gl :Glog<cr>
+noremap \gd :Gdiff<cr>
+noremap \gb :Gblame<cr>
+
+"" UltiSnips
+let g:UltiSnipsExpandTrigger="<c-j>"
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Mappings
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 let mapleader = ","
-
 
 " paste mode toggle
 set pastetoggle=<f4>
@@ -88,38 +199,16 @@ set pastetoggle=<f4>
 " toggle number
 nmap <F5> :set number! number?<CR>
 
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Specific File Types
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
 " set indenting for puppet files
 autocmd FileType puppet setlocal shiftwidth=4 tabstop=4
 
-"http://stackoverflow.com/questions/849084/what-fold-should-i-use-in-vim
-" Folding stuff
-"hi Folded guibg=red guifg=Red cterm=bold ctermbg=DarkGrey ctermfg=lightblue
-"hi FoldColumn guibg=grey78 gui=Bold guifg=DarkBlue
-set foldcolumn=0
-set foldclose=
-set foldmethod=indent
-set foldnestmax=10
-set foldlevel=999
-"set fillchars=vert:\|,fold:\
-"set foldminlines=1
-" Toggle fold state between closed and opened.
-
-" If there is no fold at current line, just moves forward.
-" If it is present, reverse it's state.
-fu! ToggleFold()
-  if foldlevel('.') == 0
-    normal! l
-  else
-    if foldclosed('.') < 0
-      . foldclose
-    else
-      . foldopen
-    endif
-  endif
-  echo
-endf
-" Map this function to Space key.
-noremap <space> :call ToggleFold()<CR>
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Additional configuration
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 " Load a host specific file
 if filereadable(expand("$HOME/.vim/vimrc.local"))
@@ -130,17 +219,3 @@ endif
 if filereadable(expand("$HOME/.vimrc.private"))
   source $HOME/.vimrc.private
 endif
-
-""" Plugin Configuration
-
-" Powerline
-let g:Powerline_symbols = 'unicode'
-set encoding=utf-8
-
-" vimwiki
-let g:vimwiki_ext2syntax = {'.md': 'markdown', '.mkd': 'markdown', '.wiki': 'media'}
-
-" neocomplcache
-let g:neocomplcache_enable_at_startup = 1
-
-let wikilinkAutosplit="off"
