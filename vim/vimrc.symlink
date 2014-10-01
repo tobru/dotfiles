@@ -57,10 +57,22 @@ VAMActivate vimwiki
 " Completion
 VAMActivate YouCompleteMe
 
+" Outliner
+VAMActivate VOoM
+
+" Fuzzy file, buffer, mru, tag, etc finder.
+VAMActivate ctrlp
+
+" plugin to visualize your Vim undo tree
+VAMActivate Gundo
+
+" NERD tree
+VAMActivate github:scrooloose/nerdtree
+
 " Syntax plugins
 VAMActivate vim-css3-syntax
 VAMActivate html5
-VAMActivate Markdown
+"VAMActivate Markdown
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Vim Behavior
@@ -74,7 +86,7 @@ set nobackup nowritebackup noswapfile autoread            " no backup or swap
 set hlsearch incsearch ignorecase smartcase               " search
 set wildmenu                                              " completion
 set backspace=indent,eol,start                            " sane backspace
-set clipboard=unnamed,unnamedplus                         " use the system clipboard for yank/put/delete
+"set clipboard=unnamed,unnamedplus                         " use the system clipboard for yank/put/delete
 set mouse=a                                               " enable mouse for all modes settings
 set nomousehide                                           " don't hide the mouse cursor while typing
 set mousemodel=popup                                      " right-click pops up context menu
@@ -83,8 +95,8 @@ set number                                                " show absolute line n
 set nofoldenable                                          " I fucking hate code folding
 set scrolloff=10                                          " scroll the window so we can always see 10 lines around the cursor
 set textwidth=80                                          " wrap at 80 characters like a valid human
-set cursorline                                            " highlight the current line
-set cursorcolumn                                          " highlight the current line
+"set cursorline                                            " highlight the current line
+"set cursorcolumn                                          " highlight the current column
 set printoptions=paper:a4                                 " use A4 as the print output format
 set guioptions-=T                                         " turn off GUI toolbar (icons)
 set guioptions-=r                                         " turn off GUI right scrollbar
@@ -101,12 +113,6 @@ set tags=./tags,tags;$HOME
 
 " middle-click paste
 noremap! <s-insert> <middlemouse>
-
-" Searching
-set hlsearch     " highlight matches
-set incsearch    " incremental searching
-set ignorecase   " searches are case insensitive...
-set smartcase
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Appearance
@@ -141,7 +147,8 @@ endfor
 if exists('+colorcolumn')
   " (I picked 120-320 because you have to provide an upper bound and 500 seems
   " to be enough.)
-  let &colorcolumn="80,".join(range(120,500),",")
+  "let &colorcolumn="80,".join(range(120,500),",")
+  let &colorcolumn="80"
 else
   " fallback for Vim < v7.3
   autocmd BufWinEnter * let w:m2=matchadd('ErrorMsg', '\%>80v.\+', -1)
@@ -185,7 +192,11 @@ noremap \gd :Gdiff<cr>
 noremap \gb :Gblame<cr>
 
 "" UltiSnips
-let g:UltiSnipsExpandTrigger="<c-j>"
+"let g:UltiSnipsExpandTrigger="<c-j>"
+let g:UltiSnipsExpandTrigger="<F3>"
+let g:UltiSnipsListSnippets="<F2>"
+let g:UltiSnipsJumpForwardTrigger="<c-j>"
+let g:UltiSnipsJumpBackwardTrigger="<c-k>"
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Mappings
