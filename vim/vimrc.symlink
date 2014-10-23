@@ -61,7 +61,8 @@ VAMActivate YouCompleteMe
 VAMActivate VOoM
 
 " Fuzzy file, buffer, mru, tag, etc finder.
-VAMActivate ctrlp
+" VAMActivate ctrlp
+VAMActivate FuzzyFinder
 
 " plugin to visualize your Vim undo tree
 VAMActivate Gundo
@@ -210,6 +211,10 @@ set pastetoggle=<f4>
 " toggle number
 nmap <F5> :set number! number?<CR>
 
+" NERDtree
+map <leader>r :NERDTreeFind<cr>
+map <leader>rc :NERDTreeClose<cr>
+
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Specific File Types
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -230,3 +235,28 @@ endif
 if filereadable(expand("$HOME/.vimrc.private"))
   source $HOME/.vimrc.private
 endif
+
+
+"  " *:VimwikiTagsearch*
+"  " *:VWT* /pattern/
+"  "     Search for /^Tags: *\(pattern\)$/ in all files of current wiki.
+"  "     This is useful for maintaining "Tags" metadata on across
+"  "     all wiki pages.  Navigate matches using same commands
+"  "     as for VimwikiSearch. Example: "VWT xxx\|yyy"
+"
+"  exe 'au FileType vimwiki command! -buffer -nargs=* VimwikiTagsearch lvimgrep "^tags: .*\(<args>\)" '.
+"        \ escape(VimwikiGet('path').'**/*'.VimwikiGet('ext'), ' ')
+"  exe 'au FileType vimwiki command! -buffer -nargs=* VWT lvimgrep "^tags: .*\(<args>\)" '.
+"        \ escape(VimwikiGet('path').'**/*'.VimwikiGet('ext'), ' ')
+"
+"  " *:VimwikiUntagged*
+"  " *:VWU*
+"  "     Search for /^Tags: *$/ in all files of current wiki.
+"  "     This is useful for maintaining "Tags" metadata on across
+"  "     all wiki pages.  Navigate matches using same commands
+"  "     as for VimwikiSearch.
+"
+"  exe 'au FileType vimwiki command! -buffer VimwikiUntagged lvimgrep "^tags: *$" '.
+"        \ escape(VimwikiGet('path').'**/*'.VimwikiGet('ext'), ' ')
+"  exe 'au FileType vimwiki command! -buffer VWU lvimgrep "^tags: *$" '.
+"        \ escape(VimwikiGet('path').'**/*'.VimwikiGet('ext'), ' ')
