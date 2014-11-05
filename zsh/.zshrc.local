@@ -1,5 +1,5 @@
 # shortcut to this dotfiles path is $ZSH
-export ZSH=$HOME/.dotfiles
+export ZSH=$HOME/.zsh
 
 # use .zshrc.private for SUPER SECRET CRAP that you don't
 # want in your public, versioned repo.
@@ -9,7 +9,7 @@ then
 fi
 
 # load syntx highlight plugin first
-source $ZSH/zsh/plugins/zsh-syntax-highlighting.zsh
+source $ZSH/plugins/zsh-syntax-highlighting.zsh
 
 # all of our zsh files
 typeset -U config_files

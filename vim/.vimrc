@@ -55,20 +55,23 @@ VAMActivate Tabular
 VAMActivate vimwiki
 
 " Completion
-VAMActivate YouCompleteMe
+"VAMActivate YouCompleteMe
 
 " Outliner
 VAMActivate VOoM
 
 " Fuzzy file, buffer, mru, tag, etc finder.
-" VAMActivate ctrlp
-VAMActivate FuzzyFinder
+VAMActivate ctrlp
+"VAMActivate FuzzyFinder
 
 " plugin to visualize your Vim undo tree
 VAMActivate Gundo
 
 " NERD tree
 VAMActivate github:scrooloose/nerdtree
+
+" Buffer helper
+VAMActivate Buffergator
 
 " Syntax plugins
 VAMActivate vim-css3-syntax
@@ -179,6 +182,7 @@ autocmd FileType make setlocal noexpandtab
 
 "" Airline
 let g:airline#extensions#tabline#enabled = 1
+let g:airline#extensions#tabline#fnamemod = ':t'
 "let g:airline_powerline_fonts = 1
 
 "" vimwiki
@@ -199,6 +203,45 @@ let g:UltiSnipsListSnippets="<F2>"
 let g:UltiSnipsJumpForwardTrigger="<c-j>"
 let g:UltiSnipsJumpBackwardTrigger="<c-k>"
 
+"" CtrlP
+" Setup some default ignores
+let g:ctrlp_custom_ignore = {
+  \ 'dir':  '\v[\/](\.(git|hg|svn)|\_site)$',
+  \ 'file': '\v\.(exe|so|dll|class|png|jpg|jpeg)$',
+\}
+
+" Use the nearest .git directory as the cwd
+" This makes a lot of sense if you are working on a project that is in version
+" control. It also supports works with .svn, .hg, .bzr.
+let g:ctrlp_working_path_mode = 'r'
+
+" Use a leader instead of the actual named binding
+nmap <leader>p :CtrlP<cr>
+
+" Easy bindings for its various modes
+nmap <leader>bb :CtrlPBuffer<cr>
+nmap <leader>bm :CtrlPMixed<cr>
+nmap <leader>bs :CtrlPMRU<cr>
+
+"" Buffergator
+" Use the right side of the screen
+let g:buffergator_viewport_split_policy = 'R'
+
+" I want my own keymappings...
+let g:buffergator_suppress_keymaps = 1
+
+" Looper buffers
+"let g:buffergator_mru_cycle_loop = 1
+
+" Go to the previous buffer open
+nmap <leader>jj :BuffergatorMruCyclePrev<cr>
+
+" Go to the next buffer open
+nmap <leader>kk :BuffergatorMruCycleNext<cr>
+
+" View the entire list of buffers open
+nmap <leader>bl :BuffergatorOpen<cr>
+
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Mappings
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -214,6 +257,31 @@ nmap <F5> :set number! number?<CR>
 " NERDtree
 map <leader>r :NERDTreeFind<cr>
 map <leader>rc :NERDTreeClose<cr>
+
+" buffer
+nmap <leader>T :enew<cr>
+nmap <leader>l :bnext<CR>
+nmap <leader>h :bprevious<CR>
+nmap <leader>bq :bp <BAR> bd #<CR>
+"nmap <leader>bl :ls<CR>
+
+" window splitting
+nmap <leader>sw<left>  :topleft  vnew<CR>
+nmap <leader>sw<right> :botright vnew<CR>
+nmap <leader>sw<up>    :topleft  new<CR>
+nmap <leader>sw<down>  :botright new<CR>
+
+" buffer splitting
+nmap <leader>s<left>   :leftabove  vnew<CR>
+nmap <leader>s<right>  :rightbelow vnew<CR>
+nmap <leader>s<up>     :leftabove  new<CR>
+nmap <leader>s<down>   :rightbelow new<CR>
+
+" buffer splitting navigation
+nnoremap <C-J> <C-W><C-J>
+nnoremap <C-K> <C-W><C-K>
+nnoremap <C-L> <C-W><C-L>
+nnoremap <C-H> <C-W><C-H>
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Specific File Types

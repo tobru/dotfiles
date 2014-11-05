@@ -5,15 +5,16 @@
 ```sh
 git clone https://github.com/tobru/dotfiles.git ~/.dotfiles
 cd ~/.dotfiles
-git submodule update --init
-scripts/bootstrap
-scripts/install
+./bootstrap
+xstow git
+xstow tmux
+xstow vim
+xstow zsh
 ```
 
 This will symlink the appropriate files in `.dotfiles` to your home directory.
 Everything is configured and tweaked within `~/.dotfiles`.
-The install script takes the necessary steps to configure the tools (f.e. run `vundle`
-in vim to install the plugins)
+The install script takes the necessary steps to configure the tools.`
 
 ## Topical
 
@@ -49,6 +50,6 @@ and the `ZSH` and `VIM` configuration is also able to handle it.
 
 ## Credits
 
-This dotfiles repository including the scripts are based on the work of @holman [Zach Holman](https://github.com/holman)
-Thanks @holman for the inspiration for creating this repository of dotfiles.
+This dotfiles repository including the scripts were originally based on the work of @holman [Zach Holman](https://github.com/holman)
+Then it has changed to `stow`, inspired by [Using GNU Stow to manage your dotfiles](http://brandon.invergo.net/news/2012-05-26-using-gnu-stow-to-manage-your-dotfiles.html?round=two)
 Many configuration ideas are based on the work of others found throughout the internet. Thanks to all of them.
